@@ -3,7 +3,7 @@
 %
 % Giuliano Bernardi
 % Created:           Dec 03, 2014
-% Last update:       Dec 06, 2017
+% Last update:       Dec 09, 2017
 
 %
 % This code is free software: you can redistribute it and/or modify it
@@ -21,11 +21,16 @@
 
 clear all; close all; clc;
 
-source_filename{1}='speech1.wav';
-source_filename{2}='speech2.wav';
-source_filename{3}='Babble_noise1.wav';
+% source_filename{1}='speech1.wav';
+% source_filename{2}='speech2.wav';
+% source_filename{3}='Babble_noise1.wav';
 
-siglength=20;
+for k = 1:11
+    source_filename{k} = ['Track-',num2str(k,'%02.f'),'.wav'];
+end
+
+% Signal length
+siglength = 60;
 
 
 % Increase the distances increases the delay in the AIRs. 
@@ -42,16 +47,26 @@ n_mics = 2;
 % Number of stages
 n_sources = 3;
 % Stage levels
-source_levs = [1; 0.2; 0.1];
+source_levs = [1; 0.1; 0.1];
 
 % Sampling frequency [Hz]
 fs = 16e3;
 
+% Time vector [s]
+t = (0:1/fs:siglength-1/fs);
+
+% PSD parameters and frequency vector [Hz]
+NFFT = 1024;
+lH = NFFT/2+1;
+f = linspace(0,fs/2-1/lH,lH)'; % Frequency vector (pwelch gives half the spectrum)
+
+
+
 % Distance source/mic [m]
 %       s1    s2    
-dist = [5500 200; ...
-        1010 180; ...
-        2000 190];
+dist = [5500 5400; ...
+        5510 5405; ...
+        5505 5410];
 
     
 % Speed of sound [m/s]
@@ -71,35 +86,41 @@ T=27;    % Temperature [degree Celsius]
 hr=80;   % Relative humidity in percentage hr=80 means 80 percent humidity
 ps=1;    % Is the barometric pressure ratio. Usually, ps=1;
 
+% figure(1); clf; hold on;
+
 % Run the program
 % [alpha, alpha_iso, c, c_iso]=air_absorption(f, T, hr, ps);
 for j = 1:n_mics
     for k = 1:n_sources
         % Calculate IR (include inverse square law and delay)
-        tmp_air = [zeros(round(delay(k)*fs),1); source_levs(k)/dist(k,j)^2; zeros(siglength*fs,1)];
+        tmp_air = [zeros(round(delay(k,j)*fs),1); source_levs(k)/dist(k,j)^2; zeros(siglength*fs,1)];
         air(k,j,:) = tmp_air(1:siglength*fs);
+        
+%         % Plot the AIRs
+%         plot(squeeze(air(k,j,:)));
 
         % Calculate attenuation values
         tmp_a = atmAtten(T,ps,hr,dist(k,j),fcentre);
         a(k,j,:) = [1; normc(1./tmp_a')];
 
-        % -----------------------
-        % -----------------------
-        % -----------------------
-        % I could use the function fir2 in this case instead of yulewalk. 
-        % I think it's easier to use
-        % -----------------------
-        % -----------------------
-        % -----------------------
-
         % Fit the filter to the octave band attenuation values
-        [bf(k,j,:),af(k,j,:)] = yulewalk(25,fcentre_yw/fs*2,squeeze(a(k,j,:)));
+%         [byw(k,j,:),ayw(k,j,:)] = yulewalk(25,fcentre_yw/fs*2,squeeze(a(k,j,:)));
+        % Using FIR2 (frequency sampling-based FIR filter design)
+        bfir2(k,j,:) = fir2(1000,fcentre_yw/fs*2,squeeze(a(k,j,:)));
 
 
+            
 %         figure(1); clf;
-%         freqz(squeeze(bf(k,j,:)),squeeze(af(k,j,:)),1024,fs)
+%         freqz(squeeze(byw(k,j,:)),squeeze(ayw(k,j,:)),1024,fs)
 %         subplot(2,1,1); hold on;
 %         plot(fcentre_yw,db(squeeze(a(k,j,:))),'r')
+%         
+%         
+%         figure(2); clf;
+%         freqz(squeeze(bfir2(k,j,:)),1,1024,fs)
+%         subplot(2,1,1); hold on;
+%         plot(fcentre_yw,db(squeeze(a(k,j,:))),'r')
+%         tilefigs([2 2])
     end
 end
 
@@ -107,18 +128,18 @@ end
 
 % Other methods. Don't work very well. Didn't check much why.
 
-% bf = firpm(100,fcentre/fs*2,a)
-% bf = firls(100,fcentre/fs*2,a);
+% byw = firpm(100,fcentre/fs*2,a)
+% byw = firls(100,fcentre/fs*2,a);
 
 
 %%
 
 % Load different speech signals
-clear x
 for k=1:n_sources
        [source,fs_wav]=audioread(source_filename{k});
        x(:,k)=normc(resample(source(1:siglength*fs_wav,1),fs,fs_wav));
 end
+
    
 % Create mic signals
 figure(1);
@@ -129,8 +150,10 @@ for j=1:n_mics % Loop over microphones
    
    for k=1:n_sources % Loop over sources
        tic
-       src_mic_contribution = filter(squeeze(bf(k,j,:)),squeeze(af(k,j,:)),fftfilt(squeeze(air(k,j,:)),x(:,k)));
-       plot(src_mic_contribution);
+%        src_mic_contribution = filter(squeeze(byw(k,j,:)),squeeze(ayw(k,j,:)),fftfilt(squeeze(air(k,j,:)),x(:,k)));
+%        src_mic_contribution = fftfilt(squeeze(bfir2(k,j,:)),fftfilt(squeeze(air(k,j,:)),x(:,k)));
+       src_mic_contribution = fftfilt(squeeze(air(k,j,:)),x(:,k));
+       plot(t,src_mic_contribution);
        mic(:,j) = mic(:,j) + src_mic_contribution;
        % Here I should add environmental noise
        toc
@@ -145,21 +168,69 @@ save('mic','mic','fs')
 
 % corr_length=4*fs_RIR;
 return
-%%
+%% Resampling and crosscorrelations
+
+
+fs_ds = 1e3; % [Hz]
+
+% Frequency vector for the autocorrelations(pwelch gives half the spectrum)
+fcorr = linspace(0,fs_ds/2-1/lH,lH)'; 
+
+
+
+% Resample source signals and microphone signals to fs_ds = 1k
+% x_ds = zeros(size(x));
+% mic_ds = zeros(size(mic));
+
+for k=1:n_sources % Loop over sources
+   x_ds(:,k)=resample(x(:,k),fs_ds,fs);
+end
+
+for j=1:n_mics % Loop over microphones
+   mic_ds(:,j)=resample(mic(:,j),fs_ds,fs);
+end
+
+
+%
+
+
+
+
+% Calculate correlations
 for j=1:n_mics % Loop over microphones
     
     for k=1:n_sources % Loop over sources
-        y(k,j,:) = fftfilt(flipud(x(:,k)),mic(:,j));
+        tic
+%         y(k,j,:) = fftfilt(flipud(x_ds(:,k)),mic_ds(:,j));
+        [y(k,j,:), tcorr] = xcorr(x_ds(:,k),mic_ds(:,j));
+        Py(k,j,:) = pwelch(squeeze(y(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
+        toc
     end
 end
 
-%%
+%
 figure(1); clf;
+figure(2); clf;
 for j=1:n_mics % Loop over microphones
     
     for k=1:n_sources % Loop over sources
+       figure(1);
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(squeeze(y(k,j,:))); title(['Mic',num2str(j),' Src',num2str(k)]);
+       plot(tcorr,squeeze(y(k,j,:))); 
+       xlim(tcorr([1 end]))
+       title(['Mic',num2str(j),' Src',num2str(k)]);
+       if (k==1); ylabel 'Xcorr [-]'; end
+       if (j>1); xlabel 'Lags [s]'; end
+       
+       %
+       figure(2);
+       subplot(n_mics,n_sources,(j-1)*n_sources+k);
+       plot(fcorr,db(squeeze(Py(k,j,:))));
+       xlim([0 fs_ds/2]);
+%        myspectrogram(squeeze(y(k,j,:)), fs, [18 1], @hanning, 1024, [-60 0] );
+       title(['Mic',num2str(j),' Src',num2str(k)]);
+       if (j>1); xlabel 'Frequency [Hz]'; end
+       if (k==1); ylabel 'PSD [dB/Hz]'; end
     end
 end
 
