@@ -2,8 +2,8 @@
 % monitoring stations
 %
 % Giuliano Bernardi
-% Created:           Dec 03, 2014
-% Last update:       Dec 09, 2017
+% Created:           Dec 03, 2017
+% Last update:       Dec 13, 2017
 
 %
 % This code is free software: you can redistribute it and/or modify it
@@ -21,9 +21,8 @@
 
 clear all; close all; clc;
 
-% source_filename{1}='speech1.wav';
-% source_filename{2}='speech2.wav';
-% source_filename{3}='Babble_noise1.wav';
+% Audio folder
+audio_folder = 'audio';
 
 for k = 1:11
     source_filename{k} = ['Track-',num2str(k,'%02.f'),'.wav'];
@@ -136,7 +135,7 @@ end
 
 % Load different speech signals
 for k=1:n_sources
-       [source,fs_wav]=audioread(source_filename{k});
+       [source,fs_wav]=audioread(fullfile(audio_folder,source_filename{k}));
        x(:,k)=normc(resample(source(1:siglength*fs_wav,1),fs,fs_wav));
 end
 
@@ -162,75 +161,3 @@ for j=1:n_mics % Loop over microphones
 end
 
 save('mic','mic','fs')
-
-% -----------------------------------------
-
-
-% corr_length=4*fs_RIR;
-return
-%% Resampling and crosscorrelations
-
-
-fs_ds = 1e3; % [Hz]
-
-% Frequency vector for the autocorrelations(pwelch gives half the spectrum)
-fcorr = linspace(0,fs_ds/2-1/lH,lH)'; 
-
-
-
-% Resample source signals and microphone signals to fs_ds = 1k
-% x_ds = zeros(size(x));
-% mic_ds = zeros(size(mic));
-
-for k=1:n_sources % Loop over sources
-   x_ds(:,k)=resample(x(:,k),fs_ds,fs);
-end
-
-for j=1:n_mics % Loop over microphones
-   mic_ds(:,j)=resample(mic(:,j),fs_ds,fs);
-end
-
-
-%
-
-
-
-
-% Calculate correlations
-for j=1:n_mics % Loop over microphones
-    
-    for k=1:n_sources % Loop over sources
-        tic
-%         y(k,j,:) = fftfilt(flipud(x_ds(:,k)),mic_ds(:,j));
-        [y(k,j,:), tcorr] = xcorr(x_ds(:,k),mic_ds(:,j));
-        Py(k,j,:) = pwelch(squeeze(y(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
-        toc
-    end
-end
-
-%
-figure(1); clf;
-figure(2); clf;
-for j=1:n_mics % Loop over microphones
-    
-    for k=1:n_sources % Loop over sources
-       figure(1);
-       subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(tcorr,squeeze(y(k,j,:))); 
-       xlim(tcorr([1 end]))
-       title(['Mic',num2str(j),' Src',num2str(k)]);
-       if (k==1); ylabel 'Xcorr [-]'; end
-       if (j>1); xlabel 'Lags [s]'; end
-       
-       %
-       figure(2);
-       subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(fcorr,db(squeeze(Py(k,j,:))));
-       xlim([0 fs_ds/2]);
-%        myspectrogram(squeeze(y(k,j,:)), fs, [18 1], @hanning, 1024, [-60 0] );
-       title(['Mic',num2str(j),' Src',num2str(k)]);
-       if (j>1); xlabel 'Frequency [Hz]'; end
-       if (k==1); ylabel 'PSD [dB/Hz]'; end
-    end
-end
-
