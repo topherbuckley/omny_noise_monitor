@@ -1,4 +1,5 @@
-% Test octave filters
+% Test octave filters and compare to simple spectrogram and log-spaced
+% spectrogram
 %
 % Giuliano Bernardi
 % Created:           Dec 13, 2017
@@ -18,20 +19,27 @@
 % You should have received a copy of the GNU General Public License along
 % with this program. If not, see http://www.gnu.org/licenses/.
 
-addpath(genpath('octave'));
+addpath(genpath('support_functions'));
 
 
-% Get portion of the signal
-x_tr = x(5*fs+1:6*fs,1);
-% Time vector [s]
-t_tr = (0:1/fs:(length(x_tr)-1)/fs);
+% Time specifications:
+fs_ds = 1e3;                 % [Hz]
+dt = 1/fs_ds;                % [s/sample]
+StopTime = 1;                % [s]
+t_tr = (0:dt:StopTime-dt)';  % [s]
+fcs = [63 120 250];          % [Hz]
+x_tr = zeros(size(t_tr));   
+% Sine waves
+for k=1:length(fcs)
+    x_tr = x_tr + cos(2*pi*fcs(k)*t_tr);
+end
 
 
 % Create third-octave filter bank
 T = 100e-3; % Integration time, i.e. window length
-[B,A] = adsgn(fs); 
+[B,A] = adsgn(fs_ds); 
 % x_trfb = filter(B,A,x_tr); 
-[P,F] = filtbank(x_tr,fs,T,'extended');
+[P,F] = filtbank(x_tr,fs_ds,T,'extended');
 
 
 % [S_sp,F_sp,T_sp] = spectrogram(x_tr,512,1024,512,fs,'yaxis');
@@ -42,11 +50,11 @@ subplot(4,1,1);
 plot(t_tr,x_tr);
 title 'Time signal'
 subplot(4,1,2);
-myspectrogram(x_tr, fs, [18 1], @hanning, 1024, [-60 0] );
-ylim([0 4000]);
+myspectrogram(x_tr, fs_ds, [18 1], @hanning, 1024, [-60 0] );
+ylim([0 fs_ds/2]);
 title 'Spectrogram'
 subplot(4,1,3);
-logfsgram(x_tr,1024,fs);
+logfsgram(x_tr,1024,fs_ds);
 title 'Log-frequency spectrogram'
 subplot(4,1,4);
 % bankdisp(P,F,-40,-20);

@@ -21,6 +21,9 @@
 
 clear all; close all; clc;
 
+% Add path of support functions
+addpath(genpath('support_functions'));
+
 % Audio folder
 audio_folder = 'audio';
 
