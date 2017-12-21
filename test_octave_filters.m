@@ -19,13 +19,15 @@
 % You should have received a copy of the GNU General Public License along
 % with this program. If not, see http://www.gnu.org/licenses/.
 
+clear all; close all; clc;
+
 addpath(genpath('support_functions'));
 
 
 % Time specifications:
 fs_ds = 1e3;                 % [Hz]
 dt = 1/fs_ds;                % [s/sample]
-StopTime = 1;                % [s]
+StopTime = 5;                % [s]
 t_tr = (0:dt:StopTime-dt)';  % [s]
 fcs = [63 120 250];          % [Hz]
 x_tr = zeros(size(t_tr));   
@@ -37,6 +39,7 @@ end
 
 % Create third-octave filter bank
 T = 100e-3; % Integration time, i.e. window length
+t_P = (0:T:StopTime-T)';  % [s]
 [B,A] = adsgn(fs_ds); 
 % x_trfb = filter(B,A,x_tr); 
 [P,F] = filtbank(x_tr,fs_ds,T,'extended');
@@ -58,7 +61,7 @@ logfsgram(x_tr,1024,fs_ds);
 title 'Log-frequency spectrogram'
 subplot(4,1,4);
 % bankdisp(P,F,-40,-20);
-imagesc(P'); axis xy
+imagesc(t_P,[1:length(F)],P'); axis xy
 set(gca,'YTick',[2:3:length(F)]);
 set(gca,'YTickLabel',F(2:3:length(F)));
 title 'Octave-band spectrogram'

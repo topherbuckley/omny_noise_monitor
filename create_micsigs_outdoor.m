@@ -57,11 +57,6 @@ fs = 16e3;
 % Time vector [s]
 t = (0:1/fs:siglength-1/fs);
 
-% PSD parameters and frequency vector [Hz]
-NFFT = 1024;
-lH = NFFT/2+1;
-f = linspace(0,fs/2-1/lH,lH)'; % Frequency vector (pwelch gives half the spectrum)
-
 
 
 % Distance source/mic [m]
@@ -163,4 +158,5 @@ for j=1:n_mics % Loop over microphones
    title(num2str(dist(:,j)'));
 end
 
-save('mic','mic','fs')
+
+save('computed_scenario','x','mic','fs','n_sources','n_mics')

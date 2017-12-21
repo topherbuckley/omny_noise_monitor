@@ -21,11 +21,28 @@
 
 %% Resampling and crosscorrelations
 
+clear all; close all; clc;
 
-fs_ds = 1e3; % [Hz]
+% Add path of support functions
+addpath(genpath('support_functions'));
+
+load('computed_scenario'); % Load computed scenario
+
+fs_ds = 1e3; % Resampled fs [Hz]
+
+
+% PSD parameters and frequency vector [Hz]
+NFFT = 1024;
+lH = NFFT/2+1;
+f = linspace(0,fs/2-1/lH,lH)'; % Frequency vector (pwelch gives half the spectrum)
 
 % Frequency vector for the autocorrelations(pwelch gives half the spectrum)
 fcorr = linspace(0,fs_ds/2-1/lH,lH)'; 
+
+
+% Create third-octave filter bank
+T = 100e-3; % Integration time, i.e. window length
+[B,A] = adsgn(fs_ds); 
 
 
 
@@ -42,25 +59,6 @@ for j=1:n_mics % Loop over microphones
 end
 
 
-% Design the octave band filterbank
-BW = '1 octave';
-N = 6;           % Filter Order
-F0 = 1000;       % Center Frequency (Hz)
-Fs = 48000;      % Sampling Frequency (Hz)
-oneOctaveFilter = octaveFilter('FilterOrder', N, ...
-    'CenterFrequency', F0, 'Bandwidth', BW, 'SampleRate', Fs)
-F0 = getANSICenterFrequencies(oneOctaveFilter);
-F0(F0<20) = [];
-F0(F0>20e3) = [];
-Nfc = length(F0);
-for i=1:Nfc
-    fullOctaveFilterBank{i} = octaveFilter('FilterOrder', N, ...
-        'CenterFrequency', F0(i), 'Bandwidth', BW, 'SampleRate', Fs); %#ok
-end
-
-
-
-
 
 
 % Calculate correlations
@@ -69,22 +67,29 @@ for j=1:n_mics % Loop over microphones
     for k=1:n_sources % Loop over sources
         tic
 %         y(k,j,:) = fftfilt(flipud(x_ds(:,k)),mic_ds(:,j));
-        [y(k,j,:), tcorr] = xcorr(x_ds(:,k),mic_ds(:,j));
-        Py(k,j,:) = pwelch(squeeze(y(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
+        [y(k,j,:), tcorr(k,j,:)] = xcorr(x_ds(:,k),mic_ds(:,j));
+        [~, imax(k,j)] = max(y(k,j,:));
+        sel_inds(k,j,:) = imax(k,j)-5*fs_ds:imax(k,j)+5*fs_ds;
+        y_tr(k,j,:) = y(k,j,squeeze(sel_inds(k,j,:)));
+        
+        Py(k,j,:) = pwelch(squeeze(y_tr(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
+        [tmp_Poct3, tmp_Foct3] = filtbank(squeeze(y_tr(k,j,:)),fs_ds,T,'extended');
+        Poct3{k,j} = tmp_Poct3; Foct3{k,j} = tmp_Foct3;
         toc
     end
 end
 
-%
+%%
 figure(1); clf;
 figure(2); clf;
+figure(3); clf;
 for j=1:n_mics % Loop over microphones
     
     for k=1:n_sources % Loop over sources
        figure(1);
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(tcorr,squeeze(y(k,j,:))); 
-       xlim(tcorr([1 end]))
+       plot(tcorr(squeeze(sel_inds(k,j,:))),squeeze(y_tr(k,j,:))); 
+       xlim(tcorr(squeeze(sel_inds(k,j,[1 end]))))
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (k==1); ylabel 'Xcorr [-]'; end
        if (j>1); xlabel 'Lags [s]'; end
@@ -98,6 +103,19 @@ for j=1:n_mics % Loop over microphones
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (j>1); xlabel 'Frequency [Hz]'; end
        if (k==1); ylabel 'PSD [dB/Hz]'; end
+       
+       
+       %
+       figure(3);
+       subplot(n_mics,n_sources,(j-1)*n_sources+k);
+       imagesc(Poct3{k,j}'); axis xy
+       set(gca,'YTick',[2:3:length(Foct3{k,j})]);
+       set(gca,'YTickLabel',Foct3{k,j}(2:3:length(Foct3{k,j})));
+       %%%%% I need to fix the time label!!!
+       title(['Mic',num2str(j),' Src',num2str(k)]);
+       if (j>1); xlabel 'Time [s]'; end
+       if (k==1); ylabel 'Frequency [Hz]'; end       
+       
     end
 end
 
