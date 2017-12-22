@@ -159,4 +159,4 @@ for j=1:n_mics % Loop over microphones
 end
 
 
-save('computed_scenario','x','mic','fs','n_sources','n_mics')
+save(fullfile(tempdir,'computed_scenario'),'x','mic','fs','n_sources','n_mics')

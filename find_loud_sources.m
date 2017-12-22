@@ -26,7 +26,7 @@ clear all; close all; clc;
 % Add path of support functions
 addpath(genpath('support_functions'));
 
-load('computed_scenario'); % Load computed scenario
+load(fullfile(tempdir,'computed_scenario')); % Load computed scenario
 
 fs_ds = 1e3; % Resampled fs [Hz]
 
@@ -59,7 +59,8 @@ for j=1:n_mics % Loop over microphones
 end
 
 
-
+% Initialize max_value
+max_value = 0;
 
 % Calculate correlations
 for j=1:n_mics % Loop over microphones
@@ -68,9 +69,12 @@ for j=1:n_mics % Loop over microphones
         tic
 %         y(k,j,:) = fftfilt(flipud(x_ds(:,k)),mic_ds(:,j));
         [y(k,j,:), tcorr(k,j,:)] = xcorr(x_ds(:,k),mic_ds(:,j));
-        [~, imax(k,j)] = max(y(k,j,:));
-        sel_inds(k,j,:) = imax(k,j)-5*fs_ds:imax(k,j)+5*fs_ds;
+        [~, imax(k,j)] = max(abs(y(k,j,:)));
+        sel_inds(k,j,:) = imax(k,j)-5*fs_ds:imax(k,j)+5*fs_ds-1;
         y_tr(k,j,:) = y(k,j,squeeze(sel_inds(k,j,:)));
+        
+        % Find max_value
+        max_value = max([max_value abs(max(y_tr(k,j,:)))]);
         
         Py(k,j,:) = pwelch(squeeze(y_tr(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
         [tmp_Poct3, tmp_Foct3] = filtbank(squeeze(y_tr(k,j,:)),fs_ds,T,'extended');
@@ -83,13 +87,18 @@ end
 figure(1); clf;
 figure(2); clf;
 figure(3); clf;
+figure(4); clf;
 for j=1:n_mics % Loop over microphones
     
     for k=1:n_sources % Loop over sources
+       curr_tcorr = tcorr(squeeze(sel_inds(k,j,:)))/fs_ds; 
+       curr_tcorr_Poct3 = curr_tcorr(1:T*fs_ds:end);
+        
        figure(1);
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(tcorr(squeeze(sel_inds(k,j,:))),squeeze(y_tr(k,j,:))); 
-       xlim(tcorr(squeeze(sel_inds(k,j,[1 end]))))
+       plot(curr_tcorr,squeeze(y_tr(k,j,:))); 
+%        xlim(curr_tcorr([1 end]))
+       ylim(max_value*[-1.15 1.15])
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (k==1); ylabel 'Xcorr [-]'; end
        if (j>1); xlabel 'Lags [s]'; end
@@ -99,11 +108,9 @@ for j=1:n_mics % Loop over microphones
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
        plot(fcorr,db(squeeze(Py(k,j,:))));
        xlim([0 fs_ds/2]);
-%        myspectrogram(squeeze(y(k,j,:)), fs, [18 1], @hanning, 1024, [-60 0] );
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (j>1); xlabel 'Frequency [Hz]'; end
        if (k==1); ylabel 'PSD [dB/Hz]'; end
-       
        
        %
        figure(3);
@@ -111,10 +118,19 @@ for j=1:n_mics % Loop over microphones
        imagesc(Poct3{k,j}'); axis xy
        set(gca,'YTick',[2:3:length(Foct3{k,j})]);
        set(gca,'YTickLabel',Foct3{k,j}(2:3:length(Foct3{k,j})));
-       %%%%% I need to fix the time label!!!
+       set(gca,'XTick',[20:20:length(curr_tcorr_Poct3)]);
+       set(gca,'XTickLabel',round(10*curr_tcorr_Poct3(1:length(curr_tcorr_Poct3)/5:end))/10);
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (j>1); xlabel 'Time [s]'; end
        if (k==1); ylabel 'Frequency [Hz]'; end       
+       
+       %
+       figure(4);
+       subplot(n_mics,n_sources,(j-1)*n_sources+k);
+       plot(Foct3{k,j},mean(Poct3{k,j},1)); axis xy
+       title(['Mic',num2str(j),' Src',num2str(k)]);
+       if (j>1); xlabel 'Frequency [Hz]'; end
+       if (k==1); ylabel 'PSD [dB/oct]'; end       
        
     end
 end
