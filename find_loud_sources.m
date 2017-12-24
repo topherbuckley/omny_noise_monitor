@@ -3,7 +3,7 @@
 %
 % Giuliano Bernardi
 % Created:           Dec 13, 2017
-% Last update:       Dec 13, 2017
+% Last update:       Dec 25, 2017
 
 %
 % This code is free software: you can redistribute it and/or modify it
@@ -29,6 +29,9 @@ addpath(genpath('support_functions'));
 load(fullfile(tempdir,'computed_scenario')); % Load computed scenario
 
 fs_ds = 1e3; % Resampled fs [Hz]
+
+% Threshold
+th = -240;
 
 
 % PSD parameters and frequency vector [Hz]
@@ -59,8 +62,10 @@ for j=1:n_mics % Loop over microphones
 end
 
 
-% Initialize max_value
-max_value = 0;
+% Initialize max values
+max_y = 0;
+max_Py = 0;
+max_Poct3 = -inf;
 
 % Calculate correlations
 for j=1:n_mics % Loop over microphones
@@ -72,14 +77,18 @@ for j=1:n_mics % Loop over microphones
         [~, imax(k,j)] = max(abs(y(k,j,:)));
         sel_inds(k,j,:) = imax(k,j)-5*fs_ds:imax(k,j)+5*fs_ds-1;
         y_tr(k,j,:) = y(k,j,squeeze(sel_inds(k,j,:)));
-        
-        % Find max_value
-        max_value = max([max_value abs(max(y_tr(k,j,:)))]);
-        
+                
         Py(k,j,:) = pwelch(squeeze(y_tr(k,j,:)),NFFT,NFFT/2,NFFT,fs_ds);
         [tmp_Poct3, tmp_Foct3] = filtbank(squeeze(y_tr(k,j,:)),fs_ds,T,'extended');
         Poct3{k,j} = tmp_Poct3; Foct3{k,j} = tmp_Foct3;
+        exc_inds{k,j} = find(mean(Poct3{k,j})>th == 1);
         toc
+        
+        % Find max values
+        max_y = max([max_y abs(max(y_tr(k,j,:)))]);
+        max_Py = max([max_Py max(Py(k,j,:))]);
+        max_Poct3 = max([max_Poct3 max(mean(Poct3{k,j}))]);
+        
     end
 end
 
@@ -97,8 +106,7 @@ for j=1:n_mics % Loop over microphones
        figure(1);
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
        plot(curr_tcorr,squeeze(y_tr(k,j,:))); 
-%        xlim(curr_tcorr([1 end]))
-       ylim(max_value*[-1.15 1.15])
+       ylim(max_y*[-1.15 1.15])
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (k==1); ylabel 'Xcorr [-]'; end
        if (j>1); xlabel 'Lags [s]'; end
@@ -107,7 +115,10 @@ for j=1:n_mics % Loop over microphones
        figure(2);
        subplot(n_mics,n_sources,(j-1)*n_sources+k);
        plot(fcorr,db(squeeze(Py(k,j,:))));
-       xlim([0 fs_ds/2]);
+       xlim([fcorr(1) fs_ds/2]);
+       ylim([db(max_Py)-150 db(max_Py)]);
+       set(gca,'xscale','log');
+       set(gca,'XTick',[1 10 100 1000]);
        title(['Mic',num2str(j),' Src',num2str(k)]);
        if (j>1); xlabel 'Frequency [Hz]'; end
        if (k==1); ylabel 'PSD [dB/Hz]'; end
@@ -126,9 +137,18 @@ for j=1:n_mics % Loop over microphones
        
        %
        figure(4);
-       subplot(n_mics,n_sources,(j-1)*n_sources+k);
-       plot(Foct3{k,j},mean(Poct3{k,j},1)); axis xy
+       mean_Poct3 = mean(Poct3{k,j},1);
+       subplot(n_mics,n_sources,(j-1)*n_sources+k); hold on;
+       plot(Foct3{k,j},mean_Poct3); axis xy
        title(['Mic',num2str(j),' Src',num2str(k)]);
+       xlim([Foct3{k,j}(1) Foct3{k,j}(end)]);
+       ylim([(max_Poct3)-50 (max_Poct3)]);
+       set(gca,'XTick',round(Foct3{k,j}(1:2:end)));
+       set(gca,'XTickLabel',round(Foct3{k,j}(1:2:end)));
+       set(gca,'xscale','log'); 
+       for i = 1:length(exc_inds{k,j})
+           stem(Foct3{k,j}(exc_inds{k,j}),mean_Poct3(exc_inds{k,j}),'o')
+       end
        if (j>1); xlabel 'Frequency [Hz]'; end
        if (k==1); ylabel 'PSD [dB/oct]'; end       
        
